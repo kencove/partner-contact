@@ -68,6 +68,26 @@ class CompanyCase(TransactionCase):
         """Create a company with whitespace everywhere in the name."""
         self.name = "  A  lot  öf    whitespace   "
 
+    def test_clean_fields_partner_company(self):
+        """Check that the fields firstname and lastname2 are
+        cleaned when partner is updated to company type
+        """
+        self.name = "Söme very lóng nâme"
+        partner = self.env["res.partner"].create(
+            {
+                "firstname": "Company",
+                "lastname": "Duck",
+                "lastname2": "Inc",
+            }
+        )
+        self.assertEqual(partner.name, "Company Duck Inc")
+
+        partner.is_company = True
+        self.assertEqual(partner.name, "Company Duck Inc")
+        self.assertEqual(partner.lastname, "Company Duck Inc")
+        self.assertFalse(partner.firstname)
+        self.assertFalse(partner.lastname2)
+
 
 class PersonCase(TransactionCase):
     """Test ``res.partner`` when it is a person."""
@@ -197,3 +217,33 @@ class UserCase(PersonCase, MailInstalled):
         # Skip if ``mail`` is installed
         if not self.mail_installed():
             super(UserCase, self).tearDown()
+
+
+class TestRecalculateNames(TransactionCase):
+    def setUp(self):
+        super().setUp()
+        self.config_settings = self.env["res.config.settings"].create({})
+
+    def test_recalculate_names(self):
+        firstname = "Xavier De Jesús"
+        lastname = "Payen"
+        lastname2 = "Sandoval"
+        correct_names = {
+            "first_last": f"{firstname} {lastname} {lastname2}",
+            "last_first": f"{lastname} {lastname2} {firstname}",
+            "last_first_comma": f"{lastname} {lastname2}, {firstname}",
+        }
+        partner = self.env["res.partner"].create(
+            {
+                "firstname": firstname,
+                "lastname": lastname,
+                "lastname2": lastname2,
+            }
+        )
+        for order in correct_names:
+            self.config_settings.partner_names_order = order
+            self.config_settings.action_recalculate_partners_name()
+            self.assertEqual(partner.name, correct_names[order])
+            self.assertEqual(partner.firstname, firstname)
+            self.assertEqual(partner.lastname, lastname)
+            self.assertEqual(partner.lastname2, lastname2)
